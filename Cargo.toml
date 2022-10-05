@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "trash_server",
+    "trash_client"
+]
+
+[profile.release]
+strip = true
