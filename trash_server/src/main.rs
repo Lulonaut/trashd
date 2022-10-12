@@ -178,14 +178,13 @@ fn ensure_config_exists() {
     eprintln!(" ok");
 }
 
-fn main() -> ! {
+fn main()  {
     eprintln!("Initializing folders");
     init_folders();
     eprintln!("Initializing config");
     ensure_config_exists();
-    let config = Config::from_file(PathBuf::from(format!("{PATH}/config.txt")));
-    process::exit(0);
-
+    let config = Config::from_file(PathBuf::from(format!("{PATH}/config.conf")));
+    return;
     //Check for incoming connections from clients and handle them
     eprintln!("Spawning thread to accept connections from clients");
     thread::Builder::new()

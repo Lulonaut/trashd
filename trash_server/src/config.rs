@@ -9,7 +9,18 @@ impl Config {
     pub fn from_file(path: PathBuf) -> Config {
         match fs::read_to_string(&path) {
             Ok(contents) => {
-                dbg!(contents);
+                for line in contents.lines() {
+                    match line.split_once(':') {
+                        Some(split) => {
+                            let name = split.0;
+                        },
+                        None=> {
+                            eprintln!("Could not read line: {line}");
+                            eprintln!("No \":\" found");
+                            continue
+                        }
+                    }
+                }
 
                 Config{ delete_after:1, }
             }
