@@ -1,14 +1,15 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use std::{fs, thread};
 use std::{process, time};
 
-use crate::config::Config;
+use crate::config::{Config, Conversion, GetOrDefault};
 
 mod config;
 
@@ -37,11 +38,7 @@ fn add_entry(line: &str) {
     let path = Path::new(line);
     let mut file_name = path.file_name().unwrap().to_os_string();
 
-    let entries = fs::read_dir(format!("{PATH}/files"))
-        .unwrap()
-        .flatten()
-        .map(|d| d.file_name())
-        .collect::<Vec<OsString>>();
+    let entries = get_files_in_folder(format!("{PATH}/files"));
 
     let mut new_path = PathBuf::from(format!("{PATH}/files/a.a")).with_file_name(&file_name);
     for existing_file_name in &entries {
@@ -101,10 +98,7 @@ fn add_entry(line: &str) {
         eprintln!("Could not move file: {}", line);
     }
 
-    let current_time = time::SystemTime::now()
-        .duration_since(time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
+    let current_time = current_time_millis();
     let mut info_file_path = PathBuf::from(format!("{PATH}/info"));
     info_file_path.push(&file_name);
     // dbg!(&info_file_path);
@@ -178,13 +172,68 @@ fn ensure_config_exists() {
     eprintln!(" ok");
 }
 
-fn main()  {
+fn current_time_millis() -> u128 {
+    time::SystemTime::now()
+        .duration_since(time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
+
+fn get_files_in_folder(path: String) -> Vec<OsString> {
+    fs::read_dir(path)
+        .unwrap()
+        .flatten()
+        .map(|d| d.file_name())
+        .collect::<Vec<OsString>>()
+}
+
+fn check_for_deletions(config: &Config) {
+    let file_entries = get_files_in_folder(format!("{PATH}/files"));
+    let info_entries = get_files_in_folder(format!("{PATH}/info"));
+    let current_time = current_time_millis() as isize;
+    let deletion_time = config.delete_after * 3600000;
+
+    for entry in &file_entries {
+        for info_entry in &info_entries {
+            if entry.eq(info_entry) {
+                match fs::read_to_string(PathBuf::from(format!("{PATH}/info")).join(&entry)) {
+                    Ok(str) => {
+                        let mut entries: HashMap<String, String> = HashMap::new();
+                        config::parse_lines(&str, &mut entries);
+                        if !entries.contains_key("added") {
+                            eprintln!("Invalid info file: {:?}", entry);
+                            continue;
+                        }
+                        let added = entries
+                            .get_or_default("added".to_string(), "-1".to_string())
+                            .to_int();
+                        if current_time > added + deletion_time {
+                            eprintln!(
+                                "Should delete file: {}",
+                                entries.get_or_default("original_path".to_string(), "".to_string())
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        eprintln!(
+                            "Could not read info file while checking for deletions: {:?}",
+                            entry
+                        );
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn main() {
     eprintln!("Initializing folders");
     init_folders();
     eprintln!("Initializing config");
     ensure_config_exists();
     let config = Config::from_file(PathBuf::from(format!("{PATH}/config.conf")));
-    return;
+    dbg!(&config);
     //Check for incoming connections from clients and handle them
     eprintln!("Spawning thread to accept connections from clients");
     thread::Builder::new()
@@ -205,10 +254,9 @@ fn main()  {
             }
         })
         .unwrap();
-
     //periodic checking if files need to be deleted
     loop {
-        //TODO
+        check_for_deletions(&config);
         thread::sleep(Duration::from_secs(1000));
     }
 }
